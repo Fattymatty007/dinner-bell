@@ -633,6 +633,13 @@ export default function GroceryList() {
         {/* header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
+            <a
+              href="https://mattsapps.xyz"
+              className="text-xs mb-2 inline-block"
+              style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textDecoration: 'none' }}
+            >
+              ← mattsapps
+            </a>
             <div
               className="text-xs mb-1"
               style={{ color: COLORS.mustard, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.15em' }}

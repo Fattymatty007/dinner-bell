@@ -11,12 +11,12 @@ import { getFirestore } from 'firebase/firestore';
 // setup and configuration). Until these are real, the "Sign in with Google"
 // button will fail — the rest of the app works anonymously regardless.
 const firebaseConfig = {
-  apiKey: 'REPLACE_ME',
-  authDomain: 'REPLACE_ME.firebaseapp.com',
-  projectId: 'REPLACE_ME',
-  storageBucket: 'REPLACE_ME.appspot.com',
-  messagingSenderId: 'REPLACE_ME',
-  appId: 'REPLACE_ME',
+  apiKey: 'AIzaSyCMe6xK2p8AZy2C27FXBvfGiO9sGZnKH2I',
+  authDomain: 'dinner-bell-6ee2b.firebaseapp.com',
+  projectId: 'dinner-bell-6ee2b',
+  storageBucket: 'dinner-bell-6ee2b.firebasestorage.app',
+  messagingSenderId: '46343332315',
+  appId: '1:46343332315:web:f21a022540d57b2dedc7fe',
 };
 
 // True once real config has been filled in. Used to hide the sign-in UI while

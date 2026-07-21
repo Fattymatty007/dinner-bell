@@ -227,6 +227,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Log a new dinner',
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
+    firstLoginTitle: 'Welcome!',
+    firstLoginBody: 'Start with our starter dinners, or a clean slate you build yourself?',
+    keepStarterDinners: 'Keep starter dinners',
+    startFresh: 'Start fresh',
     dept: {
       Produce: 'PRODUCE',
       'Meat & Seafood': 'MEAT & SEAFOOD',
@@ -274,6 +278,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Registrar una nueva cena',
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
+    firstLoginTitle: '¡Bienvenido!',
+    firstLoginBody: '¿Empezar con nuestras cenas de ejemplo o con una lista vacía que armes tú?',
+    keepStarterDinners: 'Conservar cenas de ejemplo',
+    startFresh: 'Empezar de cero',
     dept: {
       Produce: 'FRUTAS Y VERDURAS',
       'Meat & Seafood': 'CARNES Y MARISCOS',
@@ -321,6 +329,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: '记录一道新晚餐',
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
+    firstLoginTitle: '欢迎！',
+    firstLoginBody: '从我们预设的晚餐开始，还是从空白列表自己添加？',
+    keepStarterDinners: '保留预设晚餐',
+    startFresh: '从头开始',
     dept: {
       Produce: '果蔬',
       'Meat & Seafood': '肉类海鲜',
@@ -380,6 +392,7 @@ export default function GroceryList() {
   const [logDish, setLogDish] = useState('');
   const [logIngredients, setLogIngredients] = useState('');
   const [showGroceryList, setShowGroceryList] = useState(false);
+  const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
   const longPressTimer = useRef(null);
   const LONG_PRESS_MS = 500;
   const bellPressTimer = useRef(null);
@@ -414,18 +427,21 @@ export default function GroceryList() {
         const profile = await loadProfile(user.uid);
         if (cancelled) return;
         if (profile) {
-          const loadedDinners = Array.isArray(profile.dinners) && profile.dinners.length ? profile.dinners : INITIAL_DINNERS;
+          // An empty dinners array is a valid saved state (user chose to start
+          // fresh) — only fall back to the starter set when the field is absent.
+          const loadedDinners = Array.isArray(profile.dinners) ? profile.dinners : INITIAL_DINNERS;
           const loadedSize = typeof profile.weekSize === 'number' ? profile.weekSize : DEFAULT_WEEK_SIZE;
           setDinners(loadedDinners);
           if (profile.language) setLanguage(profile.language);
           setWeekSize(loadedSize);
           setWeek(pickWeekSlots(loadedDinners, [], loadedSize));
+          hydratedUid.current = user.uid;
         } else {
-          // First sign-in: seed the profile with whatever's currently loaded
-          // (the starter set for a fresh session).
-          await saveProfile(user.uid, { dinners: INITIAL_DINNERS, language: 'en', weekSize: DEFAULT_WEEK_SIZE });
+          // First sign-in: let the user pick a starting point before we create
+          // their profile doc. hydratedUid stays unset until they choose, so the
+          // persist effect writes nothing in the meantime.
+          setShowFirstLoginModal(true);
         }
-        hydratedUid.current = user.uid;
       } catch (e) {
         console.error('Failed to load profile', e);
       }
@@ -446,6 +462,24 @@ export default function GroceryList() {
   }, [user, dinners, language, weekSize]);
 
   const firstName = user?.displayName ? user.displayName.split(' ')[0] : '';
+
+  // First-login choice: keep the starter dinners or begin with an empty list.
+  // Either way this creates the profile doc and opens the persist gate.
+  const finishFirstLogin = useCallback(
+    (keepStarter) => {
+      const nextDinners = keepStarter ? INITIAL_DINNERS : [];
+      setDinners(nextDinners);
+      setWeek(pickWeekSlots(nextDinners, [], weekSize));
+      setShowFirstLoginModal(false);
+      if (user) {
+        hydratedUid.current = user.uid;
+        saveProfile(user.uid, { dinners: nextDinners, language, weekSize }).catch((e) =>
+          console.error('Failed to save profile', e)
+        );
+      }
+    },
+    [user, language, weekSize]
+  );
 
   const groceryItems = useMemo(() => {
     const totals = new Map(); // key: lowercase base name -> { name, qty }
@@ -1365,6 +1399,43 @@ export default function GroceryList() {
               >
                 {t(language, 'saveDinner')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFirstLoginModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'Inter', sans-serif" }}
+          >
+            <div className="p-5">
+              <div className="text-3xl mb-1" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                {t(language, 'firstLoginTitle')}
+              </div>
+              <div className="text-sm mb-5" style={{ color: COLORS.chalkDim }}>
+                {t(language, 'firstLoginBody')}
+              </div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => finishFirstLogin(true)}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium"
+                  style={{ background: COLORS.mustard, color: COLORS.bg }}
+                >
+                  {t(language, 'keepStarterDinners')}
+                </button>
+                <button
+                  onClick={() => finishFirstLogin(false)}
+                  className="w-full py-2.5 rounded-lg text-sm font-medium"
+                  style={{ background: COLORS.bg, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+                >
+                  {t(language, 'startFresh')}
+                </button>
+              </div>
             </div>
           </div>
         </div>

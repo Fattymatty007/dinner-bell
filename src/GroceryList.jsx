@@ -1,5 +1,8 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell } from 'lucide-react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut } from 'lucide-react';
+import { useAuth } from './useAuth';
+import { firebaseConfigured } from './firebase';
+import { loadProfile, saveProfile } from './profileStore';
 
 const COLORS = {
   bg: '#2B2E27',
@@ -341,6 +344,18 @@ function tDept(lang, deptName) {
   return (TRANSLATIONS[lang] && TRANSLATIONS[lang].dept[deptName]) || TRANSLATIONS.en.dept[deptName] || deptName;
 }
 
+// Google "G" mark, inline so the sign-in button needs no external asset.
+function GoogleGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.5-4.6 2.4-7.2 2.4-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.6 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C41.4 35.7 44 30.3 44 24c0-1.3-.1-2.3-.4-3.5z" />
+    </svg>
+  );
+}
+
 export default function GroceryList() {
   const [language, setLanguage] = useState('en');
   // Master dinner log. Seeded from INITIAL_DINNERS, but lives in state so "Log New Dinner"
@@ -370,6 +385,67 @@ export default function GroceryList() {
   const bellPressTimer = useRef(null);
   const bellLongPressed = useRef(false);
   const BELL_LONG_PRESS_MS = 500;
+
+  // --- auth + per-user profile sync ---------------------------------------
+  const { user, signInWithGoogle, signOutUser } = useAuth();
+  // Gate the persist effect until the profile for the current user has loaded,
+  // so we never write placeholder/anonymous state back over a real profile
+  // mid-load. Keyed by uid so switching accounts re-gates.
+  const hydratedUid = useRef(null);
+
+  // Hydrate from (or seed) the user's profile whenever they sign in, and reset
+  // to defaults when they sign out so one account's data doesn't linger.
+  useEffect(() => {
+    if (!user) {
+      if (hydratedUid.current !== null) {
+        // Just signed out — clear back to the anonymous defaults.
+        hydratedUid.current = null;
+        setDinners(INITIAL_DINNERS);
+        setLanguage('en');
+        setWeekSize(DEFAULT_WEEK_SIZE);
+        setWeek(pickWeekSlots(INITIAL_DINNERS, [], DEFAULT_WEEK_SIZE));
+      }
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await loadProfile(user.uid);
+        if (cancelled) return;
+        if (profile) {
+          const loadedDinners = Array.isArray(profile.dinners) && profile.dinners.length ? profile.dinners : INITIAL_DINNERS;
+          const loadedSize = typeof profile.weekSize === 'number' ? profile.weekSize : DEFAULT_WEEK_SIZE;
+          setDinners(loadedDinners);
+          if (profile.language) setLanguage(profile.language);
+          setWeekSize(loadedSize);
+          setWeek(pickWeekSlots(loadedDinners, [], loadedSize));
+        } else {
+          // First sign-in: seed the profile with whatever's currently loaded
+          // (the starter set for a fresh session).
+          await saveProfile(user.uid, { dinners: INITIAL_DINNERS, language: 'en', weekSize: DEFAULT_WEEK_SIZE });
+        }
+        hydratedUid.current = user.uid;
+      } catch (e) {
+        console.error('Failed to load profile', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Persist dinner log + preferences (debounced) once signed in and hydrated.
+  useEffect(() => {
+    if (!user || hydratedUid.current !== user.uid) return undefined;
+    const handle = setTimeout(() => {
+      saveProfile(user.uid, { dinners, language, weekSize }).catch((e) => console.error('Failed to save profile', e));
+    }, 800);
+    return () => clearTimeout(handle);
+  }, [user, dinners, language, weekSize]);
+
+  const firstName = user?.displayName ? user.displayName.split(' ')[0] : '';
 
   const groceryItems = useMemo(() => {
     const totals = new Map(); // key: lowercase base name -> { name, qty }
@@ -630,16 +706,53 @@ export default function GroceryList() {
         @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
       `}</style>
       <div className="w-full max-w-md" style={{ fontFamily: "'Inter', sans-serif" }}>
+        {/* top bar: hub link + auth */}
+        <div className="flex items-center justify-between mb-3" style={{ minHeight: 28 }}>
+          <a
+            href="https://mattsapps.xyz"
+            className="text-xs inline-block"
+            style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textDecoration: 'none' }}
+          >
+            ← mattsapps
+          </a>
+          {firebaseConfigured && (
+            user ? (
+              <div className="flex items-center gap-2">
+                {user.photoURL && (
+                  <img
+                    src={user.photoURL}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    style={{ width: 24, height: 24, borderRadius: '50%', border: `1px solid ${COLORS.panelBorderLight}` }}
+                  />
+                )}
+                <span className="text-xs" style={{ color: COLORS.chalk, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {firstName}
+                </span>
+                <button
+                  onClick={signOutUser}
+                  aria-label="Sign out"
+                  className="flex items-center px-1.5 py-1 rounded-md"
+                  style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={signInWithGoogle}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium"
+                style={{ background: COLORS.panel, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+              >
+                <GoogleGlyph />
+                Sign in
+              </button>
+            )
+          )}
+        </div>
         {/* header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
-            <a
-              href="https://mattsapps.xyz"
-              className="text-xs mb-2 inline-block"
-              style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em', textDecoration: 'none' }}
-            >
-              ← mattsapps
-            </a>
             <div
               className="text-xs mb-1"
               style={{ color: COLORS.mustard, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.15em' }}

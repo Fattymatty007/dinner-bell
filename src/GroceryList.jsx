@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -231,6 +231,11 @@ const TRANSLATIONS = {
     firstLoginBody: 'Start with our starter dinners, or a clean slate you build yourself?',
     keepStarterDinners: 'Keep starter dinners',
     startFresh: 'Start fresh',
+    clearAll: 'Clear all',
+    clearConfirmBody: 'Are you sure you would like to delete all logged dinners?',
+    confirmYes: 'Yes',
+    cancel: 'Cancel',
+    slideToDelete: 'Slide to delete',
     dept: {
       Produce: 'PRODUCE',
       'Meat & Seafood': 'MEAT & SEAFOOD',
@@ -282,6 +287,11 @@ const TRANSLATIONS = {
     firstLoginBody: '¿Empezar con nuestras cenas de ejemplo o con una lista vacía que armes tú?',
     keepStarterDinners: 'Conservar cenas de ejemplo',
     startFresh: 'Empezar de cero',
+    clearAll: 'Borrar todo',
+    clearConfirmBody: '¿Seguro que quieres eliminar todas las cenas registradas?',
+    confirmYes: 'Sí',
+    cancel: 'Cancelar',
+    slideToDelete: 'Desliza para eliminar',
     dept: {
       Produce: 'FRUTAS Y VERDURAS',
       'Meat & Seafood': 'CARNES Y MARISCOS',
@@ -333,6 +343,11 @@ const TRANSLATIONS = {
     firstLoginBody: '从我们预设的晚餐开始，还是从空白列表自己添加？',
     keepStarterDinners: '保留预设晚餐',
     startFresh: '从头开始',
+    clearAll: '清空全部',
+    clearConfirmBody: '确定要删除所有已记录的晚餐吗？',
+    confirmYes: '是',
+    cancel: '取消',
+    slideToDelete: '滑动以删除',
     dept: {
       Produce: '果蔬',
       'Meat & Seafood': '肉类海鲜',
@@ -368,6 +383,88 @@ function GoogleGlyph() {
   );
 }
 
+// Drag-the-handle-to-the-end confirmation for a destructive action. Fires
+// onConfirm once the handle reaches the end of the track; snaps back otherwise.
+function SlideToConfirm({ label, onConfirm }) {
+  const trackRef = useRef(null);
+  const startRef = useRef(0);
+  const [x, setX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [done, setDone] = useState(false);
+  const HANDLE = 44;
+  const PAD = 3;
+
+  const maxX = () => {
+    const w = trackRef.current ? trackRef.current.offsetWidth : 300;
+    return Math.max(0, w - HANDLE - PAD * 2);
+  };
+
+  const onPointerDown = (e) => {
+    if (done) return;
+    setDragging(true);
+    startRef.current = e.clientX - x;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragging || done) return;
+    setX(Math.min(maxX(), Math.max(0, e.clientX - startRef.current)));
+  };
+  const onPointerUp = () => {
+    if (!dragging || done) return;
+    setDragging(false);
+    if (x >= maxX() - 6) {
+      setX(maxX());
+      setDone(true);
+      onConfirm();
+    } else {
+      setX(0);
+    }
+  };
+
+  const progress = maxX() ? x / maxX() : 0;
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative w-full rounded-lg overflow-hidden select-none"
+      style={{ height: HANDLE + PAD * 2, background: COLORS.bg, border: `1px solid ${COLORS.panelBorderLight}`, touchAction: 'none' }}
+    >
+      {/* danger fill grows as the handle moves */}
+      <div
+        className="absolute inset-y-0 left-0"
+        style={{ width: `${progress * 100}%`, background: COLORS.rust, opacity: 0.35 }}
+      />
+      <div
+        className="absolute inset-0 flex items-center justify-center text-xs font-medium"
+        style={{ color: COLORS.chalkDim, opacity: 1 - progress, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em' }}
+      >
+        {label}
+      </div>
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className="absolute top-0 flex items-center justify-center"
+        style={{
+          left: PAD,
+          width: HANDLE,
+          height: HANDLE,
+          marginTop: PAD,
+          borderRadius: 8,
+          background: COLORS.rust,
+          transform: `translateX(${x}px)`,
+          transition: dragging ? 'none' : 'transform 0.2s ease',
+          cursor: 'grab',
+          touchAction: 'none',
+        }}
+      >
+        {done ? <Check size={20} style={{ color: COLORS.paper }} /> : <ChevronsRight size={20} style={{ color: COLORS.paper }} />}
+      </div>
+    </div>
+  );
+}
+
 export default function GroceryList() {
   const [language, setLanguage] = useState('en');
   // Master dinner log. Seeded from INITIAL_DINNERS, but lives in state so "Log New Dinner"
@@ -393,6 +490,7 @@ export default function GroceryList() {
   const [logIngredients, setLogIngredients] = useState('');
   const [showGroceryList, setShowGroceryList] = useState(false);
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
+  const [clearPhase, setClearPhase] = useState(null); // null | 'ask' | 'slide'
   const longPressTimer = useRef(null);
   const LONG_PRESS_MS = 500;
   const bellPressTimer = useRef(null);
@@ -480,6 +578,16 @@ export default function GroceryList() {
     },
     [user, language, weekSize]
   );
+
+  // Wipe the whole dinner log. For signed-in users the persist effect (keyed on
+  // `dinners`) writes the empty list back to their profile automatically.
+  const clearAllDinners = useCallback(() => {
+    setDrag(null);
+    setDinners([]);
+    setWeek([]);
+    setShowGroceryList(false);
+    setClearPhase(null);
+  }, []);
 
   const groceryItems = useMemo(() => {
     const totals = new Map(); // key: lowercase base name -> { name, qty }
@@ -847,6 +955,19 @@ export default function GroceryList() {
           <Plus size={14} />
           {t(language, 'logNewDinner')}
         </button>
+
+        {dinners.length > 0 && (
+          <div className="flex justify-end mb-4 -mt-2">
+            <button
+              onClick={() => setClearPhase('ask')}
+              className="flex items-center gap-1 text-xs"
+              style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
+            >
+              <Trash2 size={12} />
+              {t(language, 'clearAll')}
+            </button>
+          </div>
+        )}
 
         {dinners.length === 0 ? (
           <div
@@ -1436,6 +1557,49 @@ export default function GroceryList() {
                   {t(language, 'startFresh')}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {clearPhase && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+          onClick={() => setClearPhase(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'Inter', sans-serif" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="flex items-start gap-2 mb-5">
+                <Trash2 size={18} style={{ color: COLORS.rust, marginTop: 2, flexShrink: 0 }} />
+                <div className="text-sm" style={{ color: COLORS.chalk }}>
+                  {t(language, 'clearConfirmBody')}
+                </div>
+              </div>
+              {clearPhase === 'ask' ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setClearPhase(null)}
+                    className="flex-1 py-2.5 rounded-lg text-sm font-medium"
+                    style={{ background: COLORS.bg, color: COLORS.chalkDim, border: `1px solid ${COLORS.panelBorderLight}` }}
+                  >
+                    {t(language, 'cancel')}
+                  </button>
+                  <button
+                    onClick={() => setClearPhase('slide')}
+                    className="flex-1 py-2.5 rounded-lg text-sm font-medium"
+                    style={{ background: COLORS.rust, color: COLORS.paper }}
+                  >
+                    {t(language, 'confirmYes')}
+                  </button>
+                </div>
+              ) : (
+                <SlideToConfirm label={t(language, 'slideToDelete')} onConfirm={clearAllDinners} />
+              )}
             </div>
           </div>
         </div>

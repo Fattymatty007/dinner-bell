@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -227,6 +227,7 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Log a new dinner',
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
+    hideGroceryList: 'Hide grocery list',
     firstLoginTitle: 'Welcome!',
     firstLoginBody: 'Start with our starter dinners, or a clean slate you build yourself?',
     keepStarterDinners: 'Keep starter dinners',
@@ -295,6 +296,7 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Registrar una nueva cena',
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
+    hideGroceryList: 'Ocultar lista',
     firstLoginTitle: '¡Bienvenido!',
     firstLoginBody: '¿Empezar con nuestras cenas de ejemplo o con una lista vacía que armes tú?',
     keepStarterDinners: 'Conservar cenas de ejemplo',
@@ -363,6 +365,7 @@ const TRANSLATIONS = {
     logNewDinnerTitle: '记录一道新晚餐',
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
+    hideGroceryList: '隐藏购物清单',
     firstLoginTitle: '欢迎！',
     firstLoginBody: '从我们预设的晚餐开始，还是从空白列表自己添加？',
     keepStarterDinners: '保留预设晚餐',
@@ -1224,11 +1227,21 @@ export default function GroceryList() {
             ) : (
               <>
                 {/* grocery receipt */}
-                <div
-                  className="text-xs mb-3"
-                  style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.15em' }}
-                >
-                  {t(language, 'groceryList')}
+                <div className="flex items-center justify-between mb-3">
+                  <div
+                    className="text-xs"
+                    style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.15em' }}
+                  >
+                    {t(language, 'groceryList')}
+                  </div>
+                  <button
+                    onClick={() => setShowGroceryList(false)}
+                    className="flex items-center gap-1 text-xs"
+                    style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
+                  >
+                    <EyeOff size={12} />
+                    {t(language, 'hideGroceryList')}
+                  </button>
                 </div>
                 <div className="rounded-xl overflow-hidden" style={{ background: COLORS.paper }}>
                   <div

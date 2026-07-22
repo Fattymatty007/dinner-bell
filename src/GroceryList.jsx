@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff, Share2 } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff, Share2, ListChecks } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -226,6 +226,8 @@ const TRANSLATIONS = {
     howManyDinners: 'How many Dinners?',
     logNewDinner: 'Log New Dinner',
     logNewDinnerTitle: 'Log a new dinner',
+    manageDinners: 'Manage dinners',
+    edit: 'Edit',
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
     hideGroceryList: 'Hide grocery list',
@@ -297,6 +299,8 @@ const TRANSLATIONS = {
     howManyDinners: '¿Cuántas cenas?',
     logNewDinner: 'Registrar nueva cena',
     logNewDinnerTitle: 'Registrar una nueva cena',
+    manageDinners: 'Gestionar cenas',
+    edit: 'Editar',
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
     hideGroceryList: 'Ocultar lista',
@@ -368,6 +372,8 @@ const TRANSLATIONS = {
     howManyDinners: '需要几顿晚餐？',
     logNewDinner: '记录新晚餐',
     logNewDinnerTitle: '记录一道新晚餐',
+    manageDinners: '管理晚餐',
+    edit: '编辑',
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
     hideGroceryList: '隐藏购物清单',
@@ -539,6 +545,12 @@ export default function GroceryList() {
   const [showSavedModal, setShowSavedModal] = useState(false);
   const [saveTitle, setSaveTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [showManageModal, setShowManageModal] = useState(false);
+  const [manageSearch, setManageSearch] = useState('');
+  const [manageEditingId, setManageEditingId] = useState(null);
+  const [manageEditDish, setManageEditDish] = useState('');
+  const [manageEditIngredients, setManageEditIngredients] = useState('');
+  const [manageConfirmDeleteId, setManageConfirmDeleteId] = useState(null);
   const [showGroceryList, setShowGroceryList] = useState(false);
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
   const [clearPhase, setClearPhase] = useState(null); // null | 'ask' | 'slide'
@@ -679,6 +691,49 @@ export default function GroceryList() {
     persistSavedLists(savedLists.filter((l) => l.id !== id));
     setConfirmDeleteId(null);
   };
+
+  // --- manage the master dinner library (edit / delete) --------------------
+  const openManage = () => {
+    setManageSearch('');
+    setManageEditingId(null);
+    setManageConfirmDeleteId(null);
+    setShowManageModal(true);
+  };
+
+  const startEditDinner = (dinner) => {
+    setManageConfirmDeleteId(null);
+    setManageEditingId(dinner.id);
+    setManageEditDish(dinner.dish);
+    setManageEditIngredients(dinner.ingredients.join(', '));
+  };
+
+  const saveEditDinner = () => {
+    const dish = manageEditDish.trim();
+    if (!dish) return;
+    const ingredients = manageEditIngredients
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const id = manageEditingId;
+    setDinners((prev) => prev.map((d) => (d.id === id ? { ...d, dish, ingredients } : d)));
+    // Keep any matching card in the current week in sync with the edit.
+    setWeek((prev) => prev.map((s) => (s.meal.id === id ? { ...s, meal: { ...s.meal, dish, ingredients } } : s)));
+    setManageEditingId(null);
+  };
+
+  const deleteDinner = (id) => {
+    setDinners((prev) => prev.filter((d) => d.id !== id));
+    // Drop it from the current week too, so a deleted dinner doesn't linger there.
+    setWeek((prev) => prev.filter((s) => s.meal.id !== id));
+    setManageConfirmDeleteId(null);
+    if (manageEditingId === id) setManageEditingId(null);
+  };
+
+  const manageFiltered = useMemo(() => {
+    const q = manageSearch.trim().toLowerCase();
+    if (!q) return dinners;
+    return dinners.filter((d) => d.dish.toLowerCase().includes(q));
+  }, [dinners, manageSearch]);
 
   const groceryItems = useMemo(() => {
     const totals = new Map(); // key: lowercase base name -> { name, qty }
@@ -1111,14 +1166,26 @@ export default function GroceryList() {
           </button>
         </div>
 
-        <button
-          onClick={openLogModal}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium mb-4"
-          style={{ background: COLORS.panel, color: COLORS.mustard, border: `1px dashed ${COLORS.panelBorderLight}` }}
-        >
-          <Plus size={14} />
-          {t(language, 'logNewDinner')}
-        </button>
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={openLogModal}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium"
+            style={{ background: COLORS.panel, color: COLORS.mustard, border: `1px dashed ${COLORS.panelBorderLight}` }}
+          >
+            <Plus size={14} />
+            {t(language, 'logNewDinner')}
+          </button>
+          {dinners.length > 0 && (
+            <button
+              onClick={openManage}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium"
+              style={{ background: COLORS.panel, color: COLORS.sage, border: `1px solid ${COLORS.panelBorderLight}` }}
+            >
+              <ListChecks size={14} />
+              {t(language, 'manageDinners')}
+            </button>
+          )}
+        </div>
 
         {dinners.length === 0 ? (
           <div
@@ -1878,6 +1945,145 @@ export default function GroceryList() {
                             <Trash2 size={14} />
                           </button>
                         </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showManageModal && (
+        <div
+          className="fixed inset-0 flex items-end justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+          onClick={() => setShowManageModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, maxHeight: '80vh', fontFamily: "'Inter', sans-serif" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4" style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
+              <div className="text-2xl" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                {t(language, 'manageDinners')}
+              </div>
+              <button onClick={() => setShowManageModal(false)} style={{ color: COLORS.sage }} aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto">
+              <input
+                value={manageSearch}
+                onChange={(e) => setManageSearch(e.target.value)}
+                placeholder={t(language, 'searchYourDinnerLog')}
+                className="w-full mb-3 px-3 py-2 rounded-lg outline-none text-sm"
+                style={{ background: COLORS.bg, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+              />
+
+              {manageFiltered.length === 0 ? (
+                <div className="text-xs py-2 text-center" style={{ color: COLORS.chalkDim }}>
+                  {t(language, 'noMatches')}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {manageFiltered.map((d) => (
+                    <div
+                      key={d.id}
+                      className="px-3 py-2 rounded-lg"
+                      style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorderLight}` }}
+                    >
+                      {manageEditingId === d.id ? (
+                        <>
+                          <label className="block text-xs mb-1" style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace" }}>
+                            {t(language, 'dishLabel')}
+                          </label>
+                          <input
+                            value={manageEditDish}
+                            onChange={(e) => setManageEditDish(e.target.value)}
+                            className="w-full mb-2 px-3 py-2 rounded-lg outline-none text-sm"
+                            style={{ background: COLORS.panel, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+                          />
+                          <label className="block text-xs mb-1" style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace" }}>
+                            {t(language, 'ingredientsLabel')}
+                          </label>
+                          <textarea
+                            value={manageEditIngredients}
+                            onChange={(e) => setManageEditIngredients(e.target.value)}
+                            rows={2}
+                            className="w-full mb-3 px-3 py-2 rounded-lg outline-none text-sm resize-none"
+                            style={{ background: COLORS.panel, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setManageEditingId(null)}
+                              className="flex-1 py-2 rounded-lg text-sm font-medium"
+                              style={{ background: COLORS.panel, color: COLORS.chalkDim, border: `1px solid ${COLORS.panelBorderLight}` }}
+                            >
+                              {t(language, 'cancel')}
+                            </button>
+                            <button
+                              onClick={saveEditDinner}
+                              disabled={!manageEditDish.trim()}
+                              className="flex-1 py-2 rounded-lg text-sm font-medium"
+                              style={{ background: COLORS.mustard, color: COLORS.bg, opacity: manageEditDish.trim() ? 1 : 0.5 }}
+                            >
+                              {t(language, 'save')}
+                            </button>
+                          </div>
+                        </>
+                      ) : manageConfirmDeleteId === d.id ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm min-w-0" style={{ color: COLORS.chalk }}>
+                            <span style={{ color: COLORS.rust }}>{t(language, 'deleteWord')}</span> · <span className="truncate">{d.dish}</span>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            <button
+                              onClick={() => deleteDinner(d.id)}
+                              className="text-xs px-2.5 py-1.5 rounded-md font-medium"
+                              style={{ background: COLORS.rust, color: COLORS.paper }}
+                            >
+                              {t(language, 'confirmYes')}
+                            </button>
+                            <button
+                              onClick={() => setManageConfirmDeleteId(null)}
+                              className="text-xs px-2 py-1.5 rounded-md"
+                              style={{ background: 'transparent', border: 'none', color: COLORS.chalkDim }}
+                            >
+                              {t(language, 'cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm" style={{ color: COLORS.chalk, fontWeight: 500 }}>{d.dish}</div>
+                            {d.ingredients.length > 0 && (
+                              <div className="text-xs mt-0.5" style={{ color: COLORS.sage }}>
+                                {d.ingredients.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => startEditDinner(d)}
+                            aria-label={t(language, 'edit')}
+                            className="flex items-center p-1.5 rounded-md shrink-0"
+                            style={{ background: 'transparent', border: 'none', color: COLORS.mustard }}
+                          >
+                            <Edit3 size={15} />
+                          </button>
+                          <button
+                            onClick={() => setManageConfirmDeleteId(d.id)}
+                            aria-label={t(language, 'deleteWord')}
+                            className="flex items-center p-1.5 rounded-md shrink-0"
+                            style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}

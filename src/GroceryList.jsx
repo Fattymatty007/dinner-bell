@@ -236,6 +236,11 @@ const TRANSLATIONS = {
     confirmYes: 'Yes',
     cancel: 'Cancel',
     slideToDelete: 'Slide to delete',
+    logMultiple: 'Log multiple',
+    logMultipleTitle: 'Log multiple dinners',
+    logMultipleHint: 'One dinner per line, as "Dish: ingredient, ingredient".',
+    logMultiplePlaceholder: 'Tacos: tortillas, ground beef, cheese\nPizza: dough, sauce, mozzarella',
+    saveDinners: 'Save dinners',
     dept: {
       Produce: 'PRODUCE',
       'Meat & Seafood': 'MEAT & SEAFOOD',
@@ -292,6 +297,11 @@ const TRANSLATIONS = {
     confirmYes: 'Sí',
     cancel: 'Cancelar',
     slideToDelete: 'Desliza para eliminar',
+    logMultiple: 'Registrar varias',
+    logMultipleTitle: 'Registrar varias cenas',
+    logMultipleHint: 'Una cena por línea, como "Platillo: ingrediente, ingrediente".',
+    logMultiplePlaceholder: 'Tacos: tortillas, carne molida, queso\nPizza: masa, salsa, mozzarella',
+    saveDinners: 'Guardar cenas',
     dept: {
       Produce: 'FRUTAS Y VERDURAS',
       'Meat & Seafood': 'CARNES Y MARISCOS',
@@ -348,6 +358,11 @@ const TRANSLATIONS = {
     confirmYes: '是',
     cancel: '取消',
     slideToDelete: '滑动以删除',
+    logMultiple: '批量添加',
+    logMultipleTitle: '批量添加晚餐',
+    logMultipleHint: '每行一道晚餐，格式为"菜名：食材、食材"。',
+    logMultiplePlaceholder: '塔可：玉米饼、牛肉馅、奶酪\n披萨：面团、酱汁、马苏里拉',
+    saveDinners: '保存晚餐',
     dept: {
       Produce: '果蔬',
       'Meat & Seafood': '肉类海鲜',
@@ -488,6 +503,8 @@ export default function GroceryList() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [logDish, setLogDish] = useState('');
   const [logIngredients, setLogIngredients] = useState('');
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkText, setBulkText] = useState('');
   const [showGroceryList, setShowGroceryList] = useState(false);
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
   const [clearPhase, setClearPhase] = useState(null); // null | 'ask' | 'slide'
@@ -752,6 +769,39 @@ export default function GroceryList() {
       .filter(Boolean);
     setDinners((prev) => [...prev, { id: `custom-${Date.now()}`, dish: dishName, ingredients }]);
     setShowLogModal(false);
+  };
+
+  const openBulkModal = () => {
+    setBulkText('');
+    setShowBulkModal(true);
+  };
+
+  // Bulk entry: one dinner per line, "Dish: ingredient, ingredient". A line
+  // without a colon is taken as a dish with no ingredients.
+  const submitBulkDinners = () => {
+    const parsed = bulkText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((raw, i) => {
+        // Tolerate full-width colon / Chinese commas so CJK input parses too.
+        const line = raw.replace(/：/g, ':').replace(/[，、]/g, ',');
+        const idx = line.indexOf(':');
+        const dish = (idx >= 0 ? line.slice(0, idx) : line).trim();
+        const ingredients =
+          idx >= 0
+            ? line
+                .slice(idx + 1)
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : [];
+        return { id: `custom-${Date.now()}-${i}`, dish, ingredients };
+      })
+      .filter((d) => d.dish);
+    if (parsed.length === 0) return;
+    setDinners((prev) => [...prev, ...parsed]);
+    setShowBulkModal(false);
   };
 
   const replaceSlot = useCallback((slotId) => {
@@ -1208,8 +1258,16 @@ export default function GroceryList() {
           ))}
         </div>
 
-        {dinners.length > 0 && (
-          <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex items-center justify-between">
+          <button
+            onClick={openBulkModal}
+            className="flex items-center gap-1 text-xs"
+            style={{ background: 'transparent', border: 'none', color: COLORS.sage, opacity: 0.7 }}
+          >
+            <ListPlus size={12} />
+            {t(language, 'logMultiple')}
+          </button>
+          {dinners.length > 0 && (
             <button
               onClick={() => setClearPhase('ask')}
               className="flex items-center gap-1 text-xs"
@@ -1218,8 +1276,8 @@ export default function GroceryList() {
               <Trash2 size={12} />
               {t(language, 'clearAll')}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {pickerSlotId && (
@@ -1519,6 +1577,51 @@ export default function GroceryList() {
                 style={{ background: COLORS.mustard, color: COLORS.bg, opacity: logDish.trim() ? 1 : 0.5 }}
               >
                 {t(language, 'saveDinner')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkModal && (
+        <div
+          className="fixed inset-0 flex items-end justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+          onClick={() => setShowBulkModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, maxHeight: '75vh', fontFamily: "'Inter', sans-serif" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4" style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
+              <div className="text-2xl" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                {t(language, 'logMultipleTitle')}
+              </div>
+              <button onClick={() => setShowBulkModal(false)} style={{ color: COLORS.sage }} aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto">
+              <div className="text-xs mb-3" style={{ color: COLORS.chalkDim }}>
+                {t(language, 'logMultipleHint')}
+              </div>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={t(language, 'logMultiplePlaceholder')}
+                rows={8}
+                className="w-full mb-4 px-3 py-2 rounded-lg outline-none text-sm resize-none"
+                style={{ background: COLORS.bg, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}`, fontFamily: "'JetBrains Mono', monospace" }}
+              />
+              <button
+                onClick={submitBulkDinners}
+                disabled={!bulkText.trim()}
+                className="w-full py-2.5 rounded-lg text-sm font-medium"
+                style={{ background: COLORS.mustard, color: COLORS.bg, opacity: bulkText.trim() ? 1 : 0.5 }}
+              >
+                {t(language, 'saveDinners')}
               </button>
             </div>
           </div>

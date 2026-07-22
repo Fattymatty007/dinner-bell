@@ -13,6 +13,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Dinner Bell" />
     <title>Dinner Bell</title>
+    <script>
+      // Capture Chrome's install prompt as early as possible — it can fire
+      // before the React app mounts, and if we miss it the in-app Install
+      // button never appears.
+      (function () {
+        window.__deferredInstallPrompt = null;
+        window.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault();
+          window.__deferredInstallPrompt = e;
+          window.dispatchEvent(new CustomEvent('pwa-install-available'));
+        });
+        window.addEventListener('appinstalled', function () {
+          window.__deferredInstallPrompt = null;
+          window.dispatchEvent(new CustomEvent('pwa-installed'));
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

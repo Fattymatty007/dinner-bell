@@ -231,6 +231,8 @@ const TRANSLATIONS = {
     installApp: 'Install app',
     iosInstallTitle: 'Install Dinner Bell',
     iosInstallBody: 'Tap the Share icon in Safari, then choose "Add to Home Screen".',
+    androidInstallBody:
+      'Open your browser menu (⋮) and tap "Install app" — or "Add to Home screen" then "Install". Avoid "Create shortcut": that just opens in the browser.',
     gotIt: 'Got it',
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
@@ -308,6 +310,8 @@ const TRANSLATIONS = {
     installApp: 'Instalar app',
     iosInstallTitle: 'Instalar Dinner Bell',
     iosInstallBody: 'Toca el ícono de Compartir en Safari y elige "Añadir a inicio".',
+    androidInstallBody:
+      'Abre el menú del navegador (⋮) y toca "Instalar app" — o "Añadir a pantalla de inicio" y luego "Instalar". Evita "Crear acceso directo": eso solo abre en el navegador.',
     gotIt: 'Entendido',
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
@@ -385,6 +389,7 @@ const TRANSLATIONS = {
     installApp: '安装应用',
     iosInstallTitle: '安装 Dinner Bell',
     iosInstallBody: '点击 Safari 的分享图标，然后选择"添加到主屏幕"。',
+    androidInstallBody: '打开浏览器菜单（⋮），点击"安装应用"——或"添加到主屏幕"再选"安装"。不要选"创建快捷方式"，那样只会在浏览器中打开。',
     gotIt: '知道了',
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
@@ -559,7 +564,8 @@ export default function GroceryList() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showManageModal, setShowManageModal] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null); // deferred beforeinstallprompt event
-  const [showIosInstallModal, setShowIosInstallModal] = useState(false);
+  const [installed, setInstalled] = useState(false);
+  const [showManualInstall, setShowManualInstall] = useState(false);
   const [{ isStandalone, isIos }] = useState(() => {
     if (typeof window === 'undefined') return { isStandalone: false, isIos: false };
     const standalone =
@@ -647,39 +653,48 @@ export default function GroceryList() {
 
   const firstName = user?.displayName ? user.displayName.split(' ')[0] : '';
 
-  // Capture the install prompt (Android/desktop Chrome) so we can offer an
-  // in-app "Install app" button, and hide it once the app is installed.
+  // Pick up Chrome's install prompt — it's captured by an early inline script
+  // in index.html (it can fire before React mounts), and also relayed via a
+  // custom event. Hide the button once the app is installed.
   useEffect(() => {
-    const onBeforeInstall = (e) => {
-      e.preventDefault();
-      setInstallPrompt(e);
+    if (typeof window !== 'undefined' && window.__deferredInstallPrompt) {
+      setInstallPrompt(window.__deferredInstallPrompt);
+    }
+    const onAvail = () => setInstallPrompt(window.__deferredInstallPrompt || null);
+    const onInstalled = () => {
+      setInstallPrompt(null);
+      setInstalled(true);
     };
-    const onInstalled = () => setInstallPrompt(null);
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
+    window.addEventListener('pwa-install-available', onAvail);
+    window.addEventListener('pwa-installed', onInstalled);
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
+      window.removeEventListener('pwa-install-available', onAvail);
+      window.removeEventListener('pwa-installed', onInstalled);
     };
   }, []);
 
   const handleInstall = async () => {
-    if (installPrompt) {
-      installPrompt.prompt();
+    const dp = installPrompt || (typeof window !== 'undefined' ? window.__deferredInstallPrompt : null);
+    if (dp) {
+      dp.prompt();
       try {
-        await installPrompt.userChoice;
+        await dp.userChoice;
       } catch (e) {
         /* ignore */
       }
       setInstallPrompt(null);
-    } else if (isIos) {
-      setShowIosInstallModal(true);
+      if (typeof window !== 'undefined') window.__deferredInstallPrompt = null;
+    } else {
+      // No native prompt available (iOS Safari, or Chrome fired it too early on
+      // a previous load) — show platform-specific manual instructions.
+      setShowManualInstall(true);
     }
   };
 
-  // Show the install affordance only when not already installed and either the
-  // browser offered a prompt (Android/desktop) or we're on iOS Safari.
-  const canInstall = !isStandalone && (installPrompt !== null || isIos);
+  // Offer the install affordance until the app is actually installed / running
+  // standalone. The button always does something helpful (native prompt or a
+  // how-to modal), so it never silently no-ops.
+  const canInstall = !isStandalone && !installed;
 
   // First-login choice: keep the starter dinners or begin with an empty list.
   // Either way this creates the profile doc and opens the persist gate.
@@ -2171,11 +2186,11 @@ export default function GroceryList() {
         </div>
       )}
 
-      {showIosInstallModal && (
+      {showManualInstall && (
         <div
           className="fixed inset-0 flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
-          onClick={() => setShowIosInstallModal(false)}
+          onClick={() => setShowManualInstall(false)}
         >
           <div
             className="w-full max-w-md rounded-2xl overflow-hidden"
@@ -2187,16 +2202,20 @@ export default function GroceryList() {
                 <div className="text-2xl" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
                   {t(language, 'iosInstallTitle')}
                 </div>
-                <button onClick={() => setShowIosInstallModal(false)} style={{ color: COLORS.sage }} aria-label="Close">
+                <button onClick={() => setShowManualInstall(false)} style={{ color: COLORS.sage }} aria-label="Close">
                   <X size={20} />
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-sm mb-5" style={{ color: COLORS.chalkDim }}>
-                <Share2 size={16} style={{ color: COLORS.mustard, flexShrink: 0 }} />
-                {t(language, 'iosInstallBody')}
+              <div className="flex items-start gap-2 text-sm mb-5" style={{ color: COLORS.chalkDim }}>
+                {isIos ? (
+                  <Share2 size={16} style={{ color: COLORS.mustard, flexShrink: 0, marginTop: 2 }} />
+                ) : (
+                  <Download size={16} style={{ color: COLORS.mustard, flexShrink: 0, marginTop: 2 }} />
+                )}
+                {t(language, isIos ? 'iosInstallBody' : 'androidInstallBody')}
               </div>
               <button
-                onClick={() => setShowIosInstallModal(false)}
+                onClick={() => setShowManualInstall(false)}
                 className="w-full py-2.5 rounded-lg text-sm font-medium"
                 style={{ background: COLORS.mustard, color: COLORS.bg }}
               >

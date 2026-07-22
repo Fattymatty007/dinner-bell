@@ -958,7 +958,7 @@ export default function GroceryList() {
   };
 
   return (
-    <div style={{ background: COLORS.bg, minHeight: '100vh' }} className="flex justify-center px-4 py-8">
+    <div style={{ background: COLORS.bg, minHeight: '100vh', overflowX: 'clip' }} className="flex justify-center px-4 py-8">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
       `}</style>

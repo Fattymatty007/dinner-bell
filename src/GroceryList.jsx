@@ -222,6 +222,7 @@ const TRANSLATIONS = {
     dinnersLabel: 'dinners',
     itemsLabel: 'ITEMS',
     copyAll: 'Copy all',
+    shareList: 'Share list',
     howManyDinners: 'How many Dinners?',
     logNewDinner: 'Log New Dinner',
     logNewDinnerTitle: 'Log a new dinner',
@@ -292,6 +293,7 @@ const TRANSLATIONS = {
     dinnersLabel: 'CENAS',
     itemsLabel: 'ARTÍCULOS',
     copyAll: 'Copiar todo',
+    shareList: 'Compartir lista',
     howManyDinners: '¿Cuántas cenas?',
     logNewDinner: 'Registrar nueva cena',
     logNewDinnerTitle: 'Registrar una nueva cena',
@@ -362,6 +364,7 @@ const TRANSLATIONS = {
     dinnersLabel: '晚餐',
     itemsLabel: '项',
     copyAll: '复制全部',
+    shareList: '分享清单',
     howManyDinners: '需要几顿晚餐？',
     logNewDinner: '记录新晚餐',
     logNewDinnerTitle: '记录一道新晚餐',
@@ -765,6 +768,21 @@ export default function GroceryList() {
     }
     copy(text, 'menu');
   }, [week, language, copy]);
+
+  // Share (or copy) the full grocery list, grouped by department.
+  const shareGrocery = useCallback(async () => {
+    if (groupedItems.length === 0) return;
+    const text = `${t(language, 'groceryList')}\n\n${copyAllText}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Dinner Bell', text });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+      }
+    }
+    copy(text, 'all');
+  }, [groupedItems, copyAllText, language, copy]);
 
   const reshuffle = () => {
     setDrag(null);
@@ -1295,7 +1313,7 @@ export default function GroceryList() {
                         {week.length} {t(language, 'dinnersLabel')} · {groceryItems.length} {t(language, 'itemsLabel')}
                       </div>
                       <button
-                        onClick={() => copy(copyAllText, 'all')}
+                        onClick={shareGrocery}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
                         style={{ background: COLORS.paperText, color: COLORS.paper }}
                       >
@@ -1304,13 +1322,13 @@ export default function GroceryList() {
                         ) : copiedKey === 'all-failed' ? (
                           <X size={13} />
                         ) : (
-                          <ClipboardList size={13} />
+                          <Share2 size={13} />
                         )}
                         {copiedKey === 'all'
                           ? t(language, 'copied')
                           : copiedKey === 'all-failed'
                           ? t(language, 'copyFailed')
-                          : t(language, 'copyAll')}
+                          : t(language, 'shareList')}
                       </button>
                     </div>
                     <div style={{ borderTop: `1px dashed ${COLORS.paperDashed}` }} />

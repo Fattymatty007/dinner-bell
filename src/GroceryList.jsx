@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff, Share2, ListChecks } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff, Share2, ListChecks, Download } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -228,6 +228,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Log a new dinner',
     manageDinners: 'Manage dinners',
     edit: 'Edit',
+    installApp: 'Install app',
+    iosInstallTitle: 'Install Dinner Bell',
+    iosInstallBody: 'Tap the Share icon in Safari, then choose "Add to Home Screen".',
+    gotIt: 'Got it',
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
     hideGroceryList: 'Hide grocery list',
@@ -301,6 +305,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: 'Registrar una nueva cena',
     manageDinners: 'Gestionar cenas',
     edit: 'Editar',
+    installApp: 'Instalar app',
+    iosInstallTitle: 'Instalar Dinner Bell',
+    iosInstallBody: 'Toca el ícono de Compartir en Safari y elige "Añadir a inicio".',
+    gotIt: 'Entendido',
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
     hideGroceryList: 'Ocultar lista',
@@ -374,6 +382,10 @@ const TRANSLATIONS = {
     logNewDinnerTitle: '记录一道新晚餐',
     manageDinners: '管理晚餐',
     edit: '编辑',
+    installApp: '安装应用',
+    iosInstallTitle: '安装 Dinner Bell',
+    iosInstallBody: '点击 Safari 的分享图标，然后选择"添加到主屏幕"。',
+    gotIt: '知道了',
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
     hideGroceryList: '隐藏购物清单',
@@ -546,6 +558,15 @@ export default function GroceryList() {
   const [saveTitle, setSaveTitle] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showManageModal, setShowManageModal] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null); // deferred beforeinstallprompt event
+  const [showIosInstallModal, setShowIosInstallModal] = useState(false);
+  const [{ isStandalone, isIos }] = useState(() => {
+    if (typeof window === 'undefined') return { isStandalone: false, isIos: false };
+    const standalone =
+      window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    const ios = /iphone|ipad|ipod/i.test(window.navigator.userAgent) && !window.MSStream;
+    return { isStandalone: standalone, isIos: ios };
+  });
   const [manageSearch, setManageSearch] = useState('');
   const [manageEditingId, setManageEditingId] = useState(null);
   const [manageEditDish, setManageEditDish] = useState('');
@@ -625,6 +646,40 @@ export default function GroceryList() {
   }, [user, dinners, language, weekSize]);
 
   const firstName = user?.displayName ? user.displayName.split(' ')[0] : '';
+
+  // Capture the install prompt (Android/desktop Chrome) so we can offer an
+  // in-app "Install app" button, and hide it once the app is installed.
+  useEffect(() => {
+    const onBeforeInstall = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    const onInstalled = () => setInstallPrompt(null);
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      try {
+        await installPrompt.userChoice;
+      } catch (e) {
+        /* ignore */
+      }
+      setInstallPrompt(null);
+    } else if (isIos) {
+      setShowIosInstallModal(true);
+    }
+  };
+
+  // Show the install affordance only when not already installed and either the
+  // browser offered a prompt (Android/desktop) or we're on iOS Safari.
+  const canInstall = !isStandalone && (installPrompt !== null || isIos);
 
   // First-login choice: keep the starter dinners or begin with an empty list.
   // Either way this creates the profile doc and opens the persist gate.
@@ -1121,6 +1176,18 @@ export default function GroceryList() {
             )
           )}
         </div>
+
+        {canInstall && (
+          <button
+            onClick={handleInstall}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-medium mb-3"
+            style={{ background: COLORS.mustard, color: COLORS.bg }}
+          >
+            <Download size={14} />
+            {t(language, 'installApp')}
+          </button>
+        )}
+
         {/* header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
@@ -2099,6 +2166,42 @@ export default function GroceryList() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showIosInstallModal && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+          onClick={() => setShowIosInstallModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, fontFamily: "'Inter', sans-serif" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-2xl" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                  {t(language, 'iosInstallTitle')}
+                </div>
+                <button onClick={() => setShowIosInstallModal(false)} style={{ color: COLORS.sage }} aria-label="Close">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-sm mb-5" style={{ color: COLORS.chalkDim }}>
+                <Share2 size={16} style={{ color: COLORS.mustard, flexShrink: 0 }} />
+                {t(language, 'iosInstallBody')}
+              </div>
+              <button
+                onClick={() => setShowIosInstallModal(false)}
+                className="w-full py-2.5 rounded-lg text-sm font-medium"
+                style={{ background: COLORS.mustard, color: COLORS.bg }}
+              >
+                {t(language, 'gotIt')}
+              </button>
             </div>
           </div>
         </div>

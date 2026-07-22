@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark, EyeOff, Share2 } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -228,6 +228,7 @@ const TRANSLATIONS = {
     saveDinner: 'Save dinner',
     generateGroceryList: 'Generate Grocery List',
     hideGroceryList: 'Hide grocery list',
+    shareMenu: 'Share menu',
     firstLoginTitle: 'Welcome!',
     firstLoginBody: 'Start with our starter dinners, or a clean slate you build yourself?',
     keepStarterDinners: 'Keep starter dinners',
@@ -297,6 +298,7 @@ const TRANSLATIONS = {
     saveDinner: 'Guardar cena',
     generateGroceryList: 'Generar lista del súper',
     hideGroceryList: 'Ocultar lista',
+    shareMenu: 'Compartir menú',
     firstLoginTitle: '¡Bienvenido!',
     firstLoginBody: '¿Empezar con nuestras cenas de ejemplo o con una lista vacía que armes tú?',
     keepStarterDinners: 'Conservar cenas de ejemplo',
@@ -366,6 +368,7 @@ const TRANSLATIONS = {
     saveDinner: '保存晚餐',
     generateGroceryList: '生成购物清单',
     hideGroceryList: '隐藏购物清单',
+    shareMenu: '分享菜单',
     firstLoginTitle: '欢迎！',
     firstLoginBody: '从我们预设的晚餐开始，还是从空白列表自己添加？',
     keepStarterDinners: '保留预设晚餐',
@@ -745,6 +748,23 @@ export default function GroceryList() {
       setTimeout(() => setCopiedKey((k) => (k === `${key}-failed` ? null : k)), 2000);
     }
   }, []);
+
+  // Share (or copy) just the current menu's dish titles.
+  const shareMenu = useCallback(async () => {
+    if (week.length === 0) return;
+    const text = `${t(language, 'thisWeeksMenu')}\n${week.map((s) => `- ${s.meal.dish}`).join('\n')}`;
+    // Prefer the native share sheet where available (mobile); fall back to copy.
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Dinner Bell', text });
+        return;
+      } catch (e) {
+        // User dismissed the share sheet — don't then copy behind their back.
+        if (e && e.name === 'AbortError') return;
+      }
+    }
+    copy(text, 'menu');
+  }, [week, language, copy]);
 
   const reshuffle = () => {
     setDrag(null);
@@ -1211,9 +1231,28 @@ export default function GroceryList() {
                 );
               })}
             </div>
-            <div className="text-xs mb-6" style={{ color: COLORS.chalkDim, opacity: 0.6 }}>
+            <div className="text-xs mb-4" style={{ color: COLORS.chalkDim, opacity: 0.6 }}>
               {t(language, 'swipeHint')}
             </div>
+
+            <button
+              onClick={shareMenu}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-medium mb-3"
+              style={{ background: COLORS.panel, color: COLORS.sage, border: `1px solid ${COLORS.panelBorderLight}` }}
+            >
+              {copiedKey === 'menu' ? (
+                <Check size={14} />
+              ) : copiedKey === 'menu-failed' ? (
+                <X size={14} />
+              ) : (
+                <Share2 size={14} />
+              )}
+              {copiedKey === 'menu'
+                ? t(language, 'copied')
+                : copiedKey === 'menu-failed'
+                ? t(language, 'copyFailed')
+                : t(language, 'shareMenu')}
+            </button>
 
             {!showGroceryList ? (
               <button

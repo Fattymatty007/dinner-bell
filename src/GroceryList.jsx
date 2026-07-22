@@ -674,6 +674,19 @@ export default function GroceryList() {
   }, []);
 
   const handleInstall = async () => {
+    // 1. Newer Web Install API (Chrome 139+): installs the current app directly,
+    //    without needing a captured beforeinstallprompt event.
+    if (typeof navigator !== 'undefined' && typeof navigator.install === 'function') {
+      try {
+        await navigator.install();
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // user dismissed the dialog
+        // any other error → fall through to the older paths
+      }
+    }
+
+    // 2. Classic captured beforeinstallprompt event.
     const dp = installPrompt || (typeof window !== 'undefined' ? window.__deferredInstallPrompt : null);
     if (dp) {
       dp.prompt();
@@ -684,11 +697,12 @@ export default function GroceryList() {
       }
       setInstallPrompt(null);
       if (typeof window !== 'undefined') window.__deferredInstallPrompt = null;
-    } else {
-      // No native prompt available (iOS Safari, or Chrome fired it too early on
-      // a previous load) — show platform-specific manual instructions.
-      setShowManualInstall(true);
+      return;
     }
+
+    // 3. Nothing the browser will let us trigger programmatically — show the
+    //    platform-specific manual instructions as a last resort.
+    setShowManualInstall(true);
   };
 
   // Offer the install affordance until the app is actually installed / running

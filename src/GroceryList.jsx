@@ -956,19 +956,6 @@ export default function GroceryList() {
           {t(language, 'logNewDinner')}
         </button>
 
-        {dinners.length > 0 && (
-          <div className="flex justify-end mb-4 -mt-2">
-            <button
-              onClick={() => setClearPhase('ask')}
-              className="flex items-center gap-1 text-xs"
-              style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
-            >
-              <Trash2 size={12} />
-              {t(language, 'clearAll')}
-            </button>
-          </div>
-        )}
-
         {dinners.length === 0 ? (
           <div
             className="rounded-xl p-6 text-center text-sm mb-8"
@@ -1220,6 +1207,19 @@ export default function GroceryList() {
             </button>
           ))}
         </div>
+
+        {dinners.length > 0 && (
+          <div className="mt-8 flex justify-end">
+            <button
+              onClick={() => setClearPhase('ask')}
+              className="flex items-center gap-1 text-xs"
+              style={{ background: 'transparent', border: 'none', color: COLORS.sage, opacity: 0.7 }}
+            >
+              <Trash2 size={12} />
+              {t(language, 'clearAll')}
+            </button>
+          </div>
+        )}
       </div>
 
       {pickerSlotId && (

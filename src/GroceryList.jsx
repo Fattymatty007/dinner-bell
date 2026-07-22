@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight } from 'lucide-react';
+import { Copy, Check, ClipboardList, ChefHat, RefreshCw, X, Plus, ListPlus, Edit3, Bell, LogOut, Trash2, ChevronsRight, Bookmark } from 'lucide-react';
 import { useAuth } from './useAuth';
 import { firebaseConfigured } from './firebase';
 import { loadProfile, saveProfile } from './profileStore';
@@ -241,6 +241,13 @@ const TRANSLATIONS = {
     logMultipleHint: 'One dinner per line, as "Dish: ingredient, ingredient".',
     logMultiplePlaceholder: 'Tacos: tortillas, ground beef, cheese\nPizza: dough, sauce, mozzarella',
     saveDinners: 'Save dinners',
+    savedLists: 'Saved lists',
+    saveMenuHint: "Save this week's menu",
+    saveMenuPlaceholder: 'Name this menu…',
+    save: 'Save',
+    noSavedLists: 'No saved lists yet. Save the current menu to start.',
+    load: 'Load',
+    deleteWord: 'Delete',
     dept: {
       Produce: 'PRODUCE',
       'Meat & Seafood': 'MEAT & SEAFOOD',
@@ -302,6 +309,13 @@ const TRANSLATIONS = {
     logMultipleHint: 'Una cena por línea, como "Platillo: ingrediente, ingrediente".',
     logMultiplePlaceholder: 'Tacos: tortillas, carne molida, queso\nPizza: masa, salsa, mozzarella',
     saveDinners: 'Guardar cenas',
+    savedLists: 'Listas guardadas',
+    saveMenuHint: 'Guardar el menú de esta semana',
+    saveMenuPlaceholder: 'Nombra este menú…',
+    save: 'Guardar',
+    noSavedLists: 'Aún no hay listas guardadas. Guarda el menú actual para empezar.',
+    load: 'Cargar',
+    deleteWord: 'Eliminar',
     dept: {
       Produce: 'FRUTAS Y VERDURAS',
       'Meat & Seafood': 'CARNES Y MARISCOS',
@@ -363,6 +377,13 @@ const TRANSLATIONS = {
     logMultipleHint: '每行一道晚餐，格式为"菜名：食材、食材"。',
     logMultiplePlaceholder: '塔可：玉米饼、牛肉馅、奶酪\n披萨：面团、酱汁、马苏里拉',
     saveDinners: '保存晚餐',
+    savedLists: '已保存的菜单',
+    saveMenuHint: '保存本周菜单',
+    saveMenuPlaceholder: '给这个菜单起个名字…',
+    save: '保存',
+    noSavedLists: '还没有保存的菜单。保存当前菜单以开始。',
+    load: '加载',
+    deleteWord: '删除',
     dept: {
       Produce: '果蔬',
       'Meat & Seafood': '肉类海鲜',
@@ -505,6 +526,10 @@ export default function GroceryList() {
   const [logIngredients, setLogIngredients] = useState('');
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  const [savedLists, setSavedLists] = useState([]); // [{ id, title, meals, createdAt }]
+  const [showSavedModal, setShowSavedModal] = useState(false);
+  const [saveTitle, setSaveTitle] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showGroceryList, setShowGroceryList] = useState(false);
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
   const [clearPhase, setClearPhase] = useState(null); // null | 'ask' | 'slide'
@@ -532,6 +557,7 @@ export default function GroceryList() {
         setLanguage('en');
         setWeekSize(DEFAULT_WEEK_SIZE);
         setWeek(pickWeekSlots(INITIAL_DINNERS, [], DEFAULT_WEEK_SIZE));
+        setSavedLists([]);
       }
       return;
     }
@@ -550,6 +576,7 @@ export default function GroceryList() {
           if (profile.language) setLanguage(profile.language);
           setWeekSize(loadedSize);
           setWeek(pickWeekSlots(loadedDinners, [], loadedSize));
+          setSavedLists(Array.isArray(profile.savedLists) ? profile.savedLists : []);
           hydratedUid.current = user.uid;
         } else {
           // First sign-in: let the user pick a starting point before we create
@@ -605,6 +632,44 @@ export default function GroceryList() {
     setShowGroceryList(false);
     setClearPhase(null);
   }, []);
+
+  // --- saved menus (titled snapshots of the current week) ------------------
+  const persistSavedLists = useCallback(
+    (lists) => {
+      setSavedLists(lists);
+      if (user) saveProfile(user.uid, { savedLists: lists }).catch((e) => console.error('Failed to save lists', e));
+    },
+    [user]
+  );
+
+  const openSavedLists = () => {
+    setSaveTitle('');
+    setConfirmDeleteId(null);
+    setShowSavedModal(true);
+  };
+
+  const saveCurrentMenu = () => {
+    const title = saveTitle.trim();
+    if (!title || week.length === 0) return;
+    const meals = week.map((s) => s.meal);
+    const entry = { id: `list-${Date.now()}`, title, meals, createdAt: Date.now() };
+    persistSavedLists([entry, ...savedLists]);
+    setSaveTitle('');
+  };
+
+  const loadSavedList = (list) => {
+    setDrag(null);
+    const slots = list.meals.map((meal) => ({ slotId: makeSlotId(), meal }));
+    setWeek(slots);
+    setWeekSize(slots.length || DEFAULT_WEEK_SIZE);
+    setShowGroceryList(false);
+    setShowSavedModal(false);
+  };
+
+  const deleteSavedList = (id) => {
+    persistSavedLists(savedLists.filter((l) => l.id !== id));
+    setConfirmDeleteId(null);
+  };
 
   const groceryItems = useMemo(() => {
     const totals = new Map(); // key: lowercase base name -> { name, qty }
@@ -921,6 +986,14 @@ export default function GroceryList() {
                 <span className="text-xs" style={{ color: COLORS.chalk, fontFamily: "'JetBrains Mono', monospace" }}>
                   {firstName}
                 </span>
+                <button
+                  onClick={openSavedLists}
+                  aria-label={t(language, 'savedLists')}
+                  className="flex items-center px-1.5 py-1 rounded-md"
+                  style={{ background: 'transparent', border: 'none', color: COLORS.mustard }}
+                >
+                  <Bookmark size={15} />
+                </button>
                 <button
                   onClick={signOutUser}
                   aria-label="Sign out"
@@ -1623,6 +1696,123 @@ export default function GroceryList() {
               >
                 {t(language, 'saveDinners')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSavedModal && (
+        <div
+          className="fixed inset-0 flex items-end justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.6)', zIndex: 50 }}
+          onClick={() => setShowSavedModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden flex flex-col"
+            style={{ background: COLORS.panel, border: `1px solid ${COLORS.panelBorder}`, maxHeight: '75vh', fontFamily: "'Inter', sans-serif" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4" style={{ borderBottom: `1px solid ${COLORS.panelBorder}` }}>
+              <div className="text-2xl" style={{ color: COLORS.chalk, fontFamily: "'Caveat', cursive", fontWeight: 700 }}>
+                {t(language, 'savedLists')}
+              </div>
+              <button onClick={() => setShowSavedModal(false)} style={{ color: COLORS.sage }} aria-label="Close">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto">
+              {/* save the current menu */}
+              <div className="text-xs mb-2" style={{ color: COLORS.sage, fontFamily: "'JetBrains Mono', monospace" }}>
+                {t(language, 'saveMenuHint')}
+              </div>
+              <div className="flex gap-2 mb-4">
+                <input
+                  value={saveTitle}
+                  onChange={(e) => setSaveTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      saveCurrentMenu();
+                    }
+                  }}
+                  placeholder={t(language, 'saveMenuPlaceholder')}
+                  className="flex-1 px-3 py-2 rounded-lg outline-none text-sm"
+                  style={{ background: COLORS.bg, color: COLORS.chalk, border: `1px solid ${COLORS.panelBorderLight}` }}
+                />
+                <button
+                  onClick={saveCurrentMenu}
+                  disabled={!saveTitle.trim() || week.length === 0}
+                  className="px-4 rounded-lg text-sm font-medium"
+                  style={{ background: COLORS.mustard, color: COLORS.bg, opacity: saveTitle.trim() && week.length > 0 ? 1 : 0.5 }}
+                >
+                  {t(language, 'save')}
+                </button>
+              </div>
+
+              <div style={{ borderTop: `1px dashed ${COLORS.panelBorderLight}` }} className="mb-3" />
+
+              {savedLists.length === 0 ? (
+                <div className="text-xs py-2 text-center" style={{ color: COLORS.chalkDim }}>
+                  {t(language, 'noSavedLists')}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {savedLists.map((list) => (
+                    <div
+                      key={list.id}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                      style={{ background: COLORS.bg, border: `1px solid ${COLORS.panelBorderLight}` }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm truncate" style={{ color: COLORS.chalk, fontWeight: 500 }}>
+                          {list.title}
+                        </div>
+                        <div className="text-xs" style={{ color: COLORS.sage }}>
+                          {list.meals.length} {t(language, 'dinnersLabel')}
+                          {list.createdAt ? ` · ${new Date(list.createdAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : language === 'es' ? 'es-ES' : 'en-US')}` : ''}
+                        </div>
+                      </div>
+                      {confirmDeleteId === list.id ? (
+                        <>
+                          <button
+                            onClick={() => deleteSavedList(list.id)}
+                            className="text-xs px-2 py-1 rounded-md font-medium"
+                            style={{ background: COLORS.rust, color: COLORS.paper }}
+                          >
+                            {t(language, 'confirmYes')}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="text-xs px-2 py-1 rounded-md"
+                            style={{ background: 'transparent', border: 'none', color: COLORS.chalkDim }}
+                          >
+                            {t(language, 'cancel')}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => loadSavedList(list)}
+                            className="text-xs px-3 py-1.5 rounded-md font-medium shrink-0"
+                            style={{ background: COLORS.mustard, color: COLORS.bg }}
+                          >
+                            {t(language, 'load')}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(list.id)}
+                            aria-label={t(language, 'deleteWord')}
+                            className="flex items-center p-1.5 rounded-md shrink-0"
+                            style={{ background: 'transparent', border: 'none', color: COLORS.sage }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
